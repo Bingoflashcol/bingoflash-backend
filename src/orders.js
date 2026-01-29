@@ -385,14 +385,16 @@ router.get('/orders/:id', (req, res) => {
 });
 
 // Buscar órdenes de un cliente por teléfono/correo
-router.get('/orders', requireAdmin, (req, res) => {
+router.get('/orders', (req, res) => {
   const { phone, email, eventId } = req.query;
+  // Este endpoint es PÚBLICO (para que la landing pueda "Buscar mis cartones").
+  // Por eso devolvemos datos mínimos (sin exponer información interna del vendedor).
   if (!phone && !email) {
     return res.status(400).json({ error: 'Debe enviar phone o email' });
   }
 
   const db = loadDB();
-  let rows = db.orders;
+  let rows = db.orders || [];
 
   if (phone) {
     rows = rows.filter(o => o.buyer_phone === phone);
@@ -400,15 +402,31 @@ router.get('/orders', requireAdmin, (req, res) => {
   if (email) {
     rows = rows.filter(o => o.buyer_email === email);
   }
-  // Si viene eventId, filtrar también por evento para que cada landing
-  // sólo muestre las compras/cartones del evento actual.
   if (eventId) {
     rows = rows.filter(o => o.event_id === eventId);
   }
 
   rows = rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
-  res.json(rows);
+  // Respuesta sanitizada: lo necesario para listar compras y luego consultar /orders/:id
+  const safe = rows.map(o => ({
+    id: o.id,
+    event_id: o.event_id,
+    buyer_name: o.buyer_name,
+    buyer_phone: o.buyer_phone,
+    buyer_email: o.buyer_email || null,
+    format: o.format,
+    amount_cop: o.amount_cop,
+    status: o.status,
+    created_at: o.created_at,
+    paid_at: o.paid_at || null,
+    expires_at: o.expires_at || null,
+    payment_method: o.payment_method || 'MANUAL',
+    combos_count: o.combos_count || 1,
+    combo_size: o.combo_size || 6
+  }));
+
+  res.json(safe);
 });
 
 // Marcar una orden como pagada y generar cartones (admin)
